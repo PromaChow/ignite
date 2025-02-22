@@ -1,287 +1,493 @@
 name: Build/Publish Docker Images
-
 on:
-  pull_request:
-    paths:
-      - docker/**
-      - ".github/workflows/docker-build.yml"
-  release:
-    types: [published]
-  workflow_dispatch:
-
+  push:
+    branches:
+      - main
 
 concurrency:
-  # <workflow_name>-<branch_name>-<true || commit_sha (if branch is protected)>
-  group: docker-build-publish-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha }}
   cancel-in-progress: true
-
+  group: docker-build-publish-${{ github.ref_name }}-${{ !(github.ref_protected) ||
+    github.sha }}
 jobs:
+  build-hvd:
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified,
+      'hvd/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
+    name: Build all Horovod flavoured PyTorch-Ignite images
+    needs: setup
+    runs-on: linux.4xlarge
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - name: Clean workspace
+        run: 'echo "::group::Cleanup debug output"
 
+          sudo rm -rfv "${GITHUB_WORKSPACE}"
+
+          mkdir -p "${GITHUB_WORKSPACE}"
+
+          echo "::endgroup::"
+
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
+      - name: Checkout repository (pytorch/test-infra)
+        uses: actions/checkout@v3
+        with:
+          path: test-infra
+          repository: pytorch/test-infra
+      - name: Setup Linux
+        uses: ./test-infra/.github/actions/setup-linux
+      - name: Checkout repository (${{ github.repository }})
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
+      - name: Build docker images
+        run: '
+
+          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
+
+          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
+
+
+          bash build.sh hvd hvd-base
+
+          bash build.sh hvd hvd-vision
+
+          bash build.sh hvd hvd-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-7
+        name: Record Measurement After Build docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Build docker images
+          task: get-measurement
+      - env:
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+        name: Publish docker images
+        run: 'bash push_all.sh hvd-base
+
+          bash push_all.sh hvd-vision
+
+          bash push_all.sh hvd-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-9
+        name: Record Measurement After Publish docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Publish docker images
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+  build-hvd-apex:
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified,
+      'hvd/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
+    name: Build all Horovod + Apex flavoured PyTorch-Ignite images
+    needs: setup
+    runs-on: linux.12xlarge
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - name: Clean workspace
+        run: 'echo "::group::Cleanup debug output"
+
+          sudo rm -rfv "${GITHUB_WORKSPACE}"
+
+          mkdir -p "${GITHUB_WORKSPACE}"
+
+          echo "::endgroup::"
+
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
+      - name: Checkout repository (pytorch/test-infra)
+        uses: actions/checkout@v3
+        with:
+          path: test-infra
+          repository: pytorch/test-infra
+      - name: Setup Linux
+        uses: ./test-infra/.github/actions/setup-linux
+      - name: Checkout repository (${{ github.repository }})
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
+      - name: Build docker images
+        run: '
+
+          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
+
+          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
+
+
+          bash build.sh hvd hvd-apex
+
+          bash build.sh hvd hvd-apex-vision
+
+          bash build.sh hvd hvd-apex-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-7
+        name: Record Measurement After Build docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Build docker images
+          task: get-measurement
+      - env:
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+        name: Publish docker images
+        run: 'bash push_all.sh hvd-apex
+
+          bash push_all.sh hvd-apex-vision
+
+          bash push_all.sh hvd-apex-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-9
+        name: Record Measurement After Publish docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Publish docker images
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+  build-main:
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified,
+      'main/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
+    name: Build all PyTorch-Ignite images
+    needs: setup
+    runs-on: linux.4xlarge
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - name: Clean workspace
+        run: 'echo "::group::Cleanup debug output"
+
+          sudo rm -rfv "${GITHUB_WORKSPACE}"
+
+          mkdir -p "${GITHUB_WORKSPACE}"
+
+          echo "::endgroup::"
+
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
+      - name: Checkout repository (pytorch/test-infra)
+        uses: actions/checkout@v3
+        with:
+          path: test-infra
+          repository: pytorch/test-infra
+      - name: Setup Linux
+        uses: ./test-infra/.github/actions/setup-linux
+      - name: Checkout repository (${{ github.repository }})
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
+      - name: Build docker images
+        run: '
+
+          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
+
+          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
+
+
+          bash build.sh main base
+
+          bash build.sh main vision
+
+          bash build.sh main nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-7
+        name: Record Measurement After Build docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Build docker images
+          task: get-measurement
+      - env:
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+        name: Publish docker images
+        run: 'bash push_all.sh base
+
+          bash push_all.sh vision
+
+          bash push_all.sh nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-9
+        name: Record Measurement After Publish docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Publish docker images
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+  build-main-apex:
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified,
+      'main/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
+    name: Build all PyTorch-Ignite images with Apex
+    needs: setup
+    runs-on: linux.12xlarge
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - name: Clean workspace
+        run: 'echo "::group::Cleanup debug output"
+
+          sudo rm -rfv "${GITHUB_WORKSPACE}"
+
+          mkdir -p "${GITHUB_WORKSPACE}"
+
+          echo "::endgroup::"
+
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
+      - name: Checkout repository (pytorch/test-infra)
+        uses: actions/checkout@v3
+        with:
+          path: test-infra
+          repository: pytorch/test-infra
+      - name: Setup Linux
+        uses: ./test-infra/.github/actions/setup-linux
+      - name: Checkout repository (${{ github.repository }})
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
+      - name: Build docker images
+        run: '
+
+          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
+
+          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
+
+
+          bash build.sh main apex
+
+          bash build.sh main apex-vision
+
+          bash build.sh main apex-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-7
+        name: Record Measurement After Build docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Build docker images
+          task: get-measurement
+      - env:
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+        name: Publish docker images
+        run: 'bash push_all.sh apex
+
+          bash push_all.sh apex-vision
+
+          bash push_all.sh apex-nlp
+
+          '
+        working-directory: ${{ github.repository }}/docker
+      - id: measurement-9
+        name: Record Measurement After Publish docker images
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Publish docker images
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
   setup:
     name: Setup
-    runs-on: ubuntu-latest
     outputs:
-      modified: ${{ steps.set-modified.outputs.modified }}
-      pth_version: ${{ steps.set-versions.outputs.pth_version }}
       hvd_version: ${{ steps.set-versions.outputs.hvd_version }}
+      modified: ${{ steps.set-modified.outputs.modified }}
       msdp_version: ${{ steps.set-versions.outputs.msdp_version }}
+      pth_version: ${{ steps.set-versions.outputs.pth_version }}
+    runs-on: ubuntu-latest
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - uses: actions/checkout@v4
-      - name: Changed Files Exporter
+      - id: files
         if: github.event_name == 'pull_request'
-        id: files
+        name: Changed Files Exporter
         uses: umani/changed-files@v4.1.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Get a list of modified files
-        if: github.event_name == 'pull_request'
-        run: echo "modified=${{ steps.files.outputs.files_created }} ${{ steps.files.outputs.files_updated }}" >> $GITHUB_ENV
-      - name: Set outputs
-        id: set-modified
+      - if: github.event_name == 'pull_request'
+        name: Get a list of modified files
+        run: echo "modified=${{ steps.files.outputs.files_created }} ${{ steps.files.outputs.files_updated
+          }}" >> $GITHUB_ENV
+      - id: measurement-4
+        name: Record Measurement After Get a list of modified files
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Get a list of modified files
+          task: get-measurement
+      - id: set-modified
+        name: Set outputs
         run: echo "modified=${{ env.modified }}" >> $GITHUB_OUTPUT
-      - name: Set versions
-        id: set-versions
+      - id: measurement-6
+        name: Record Measurement After Set outputs
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Set outputs
+          task: get-measurement
+      - id: set-versions
+        name: Set versions
+        run: 'echo "pth_version=$(python -c "import configparser; cfg=configparser.ConfigParser();
+          cfg.read(''docker.cfg''); print(cfg.get(''DEFAULT'', ''build_docker_image_pytorch_version''))")"
+          >> $GITHUB_OUTPUT
+
+          echo "hvd_version=$(python -c "import configparser; cfg=configparser.ConfigParser();
+          cfg.read(''docker.cfg''); print(cfg.get(''DEFAULT'', ''build_docker_image_hvd_version''))")"
+          >> $GITHUB_OUTPUT
+
+          '
         working-directory: docker
-        run: |
-          echo "pth_version=$(python -c "import configparser; cfg=configparser.ConfigParser(); cfg.read('docker.cfg'); print(cfg.get('DEFAULT', 'build_docker_image_pytorch_version'))")" >> $GITHUB_OUTPUT
-          echo "hvd_version=$(python -c "import configparser; cfg=configparser.ConfigParser(); cfg.read('docker.cfg'); print(cfg.get('DEFAULT', 'build_docker_image_hvd_version'))")" >> $GITHUB_OUTPUT
-
-
-  build-hvd:
-    name: Build all Horovod flavoured PyTorch-Ignite images
-    needs: setup
-    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified, 'hvd/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
-
-    # Cherry-picked from https://github.com/pytorch/test-infra/blob/main/.github/workflows/linux_job.yml
-    env:
-      REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-    runs-on: linux.4xlarge
-    steps:
-      - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
-          sudo rm -rfv "${GITHUB_WORKSPACE}"
-          mkdir -p "${GITHUB_WORKSPACE}"
-          echo "::endgroup::"
-
-      - name: Checkout repository (pytorch/test-infra)
-        uses: actions/checkout@v3
+      - id: measurement-8
+        name: Record Measurement After Set versions
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
-          path: test-infra
-
-      - name: Setup Linux
-        uses: ./test-infra/.github/actions/setup-linux
-
-      - name: Checkout repository (${{ github.repository }})
-        uses: actions/checkout@v3
+          json-output: true
+          label: Set versions
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
-          fetch-depth: 1
-
-      - name: Build docker images
-        working-directory: ${{ github.repository }}/docker
-        run: |
-
-          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
-          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
-
-          bash build.sh hvd hvd-base
-          bash build.sh hvd hvd-vision
-          bash build.sh hvd hvd-nlp
-
-      - name: Publish docker images
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
-        env:
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        working-directory: ${{ github.repository }}/docker
-        run: |
-          bash push_all.sh hvd-base
-          bash push_all.sh hvd-vision
-          bash push_all.sh hvd-nlp
-
-
-  build-hvd-apex:
-    name: Build all Horovod + Apex flavoured PyTorch-Ignite images
-    needs: setup
-    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified, 'hvd/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
-
-    # Cherry-picked from https://github.com/pytorch/test-infra/blob/main/.github/workflows/linux_job.yml
-    env:
-      REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-    runs-on: linux.12xlarge
-    steps:
-      - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
-          sudo rm -rfv "${GITHUB_WORKSPACE}"
-          mkdir -p "${GITHUB_WORKSPACE}"
-          echo "::endgroup::"
-
-      - name: Checkout repository (pytorch/test-infra)
-        uses: actions/checkout@v3
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
-          path: test-infra
-
-      - name: Setup Linux
-        uses: ./test-infra/.github/actions/setup-linux
-
-      - name: Checkout repository (${{ github.repository }})
-        uses: actions/checkout@v3
-        with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
-          fetch-depth: 1
-
-      - name: Build docker images
-        working-directory: ${{ github.repository }}/docker
-        run: |
-
-          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
-          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
-
-          bash build.sh hvd hvd-apex
-          bash build.sh hvd hvd-apex-vision
-          bash build.sh hvd hvd-apex-nlp
-
-      - name: Publish docker images
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
-        env:
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        working-directory: ${{ github.repository }}/docker
-        run: |
-          bash push_all.sh hvd-apex
-          bash push_all.sh hvd-apex-vision
-          bash push_all.sh hvd-apex-nlp
-
-
-  build-main:
-    name: Build all PyTorch-Ignite images
-    needs: setup
-    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified, 'main/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
-
-    # Cherry-picked from https://github.com/pytorch/test-infra/blob/main/.github/workflows/linux_job.yml
-    env:
-      REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-    runs-on: linux.4xlarge
-    steps:
-      - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
-          sudo rm -rfv "${GITHUB_WORKSPACE}"
-          mkdir -p "${GITHUB_WORKSPACE}"
-          echo "::endgroup::"
-
-      - name: Checkout repository (pytorch/test-infra)
-        uses: actions/checkout@v3
-        with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
-          path: test-infra
-
-      - name: Setup Linux
-        uses: ./test-infra/.github/actions/setup-linux
-
-      - name: Checkout repository (${{ github.repository }})
-        uses: actions/checkout@v3
-        with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
-          fetch-depth: 1
-
-      - name: Build docker images
-        working-directory: ${{ github.repository }}/docker
-        run: |
-
-          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
-          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
-
-          bash build.sh main base
-          bash build.sh main vision
-          bash build.sh main nlp
-
-      - name: Publish docker images
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
-        env:
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        working-directory: ${{ github.repository }}/docker
-        run: |
-          bash push_all.sh base
-          bash push_all.sh vision
-          bash push_all.sh nlp
-
-
-  build-main-apex:
-    name: Build all PyTorch-Ignite images with Apex
-    needs: setup
-    if: github.event_name != 'pull_request' || (contains(needs.setup.outputs.modified, 'main/') || contains(needs.setup.outputs.modified, 'docker.cfg'))
-
-    # Cherry-picked from https://github.com/pytorch/test-infra/blob/main/.github/workflows/linux_job.yml
-    env:
-      REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-    runs-on: linux.12xlarge
-    steps:
-      - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
-          sudo rm -rfv "${GITHUB_WORKSPACE}"
-          mkdir -p "${GITHUB_WORKSPACE}"
-          echo "::endgroup::"
-
-      - name: Checkout repository (pytorch/test-infra)
-        uses: actions/checkout@v3
-        with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
-          path: test-infra
-
-      - name: Setup Linux
-        uses: ./test-infra/.github/actions/setup-linux
-
-      - name: Checkout repository (${{ github.repository }})
-        uses: actions/checkout@v3
-        with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
-          fetch-depth: 1
-
-      - name: Build docker images
-        working-directory: ${{ github.repository }}/docker
-        run: |
-
-          export PTH_VERSION=${{ needs.setup.outputs.pth_version }}
-          export HVD_VERSION=${{ needs.setup.outputs.hvd_version }}
-
-          bash build.sh main apex
-          bash build.sh main apex-vision
-          bash build.sh main apex-nlp
-
-      - name: Publish docker images
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
-        env:
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        working-directory: ${{ github.repository }}/docker
-        run: |
-          bash push_all.sh apex
-          bash push_all.sh apex-vision
-          bash push_all.sh apex-nlp
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json

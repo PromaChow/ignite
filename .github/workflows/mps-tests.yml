@@ -2,134 +2,192 @@ name: Run unit tests on M1
 on:
   push:
     branches:
-      - master
-      - "*.*.*"
-    paths:
-      - "ignite/**"
-      - "tests/ignite/**"
-      - "tests/run_code_style.sh"
-      - "examples/**.py"
-      - "requirements-dev.txt"
-      - ".github/workflows/mps-tests.yml"
-  pull_request:
-    paths:
-      - "ignite/**"
-      - "tests/ignite/**"
-      - "tests/run_code_style.sh"
-      - "examples/**.py"
-      - "requirements-dev.txt"
-      - ".github/workflows/mps-tests.yml"
-  workflow_dispatch:
+      - main
 
 concurrency:
-  # <workflow_name>-<branch_name>-<true || commit_sha (if branch is protected)>
-  group: mps-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha }}
   cancel-in-progress: true
-
-# Cherry-picked from 
-# - https://github.com/pytorch/vision/blob/main/.github/workflows/tests.yml
-# - https://github.com/pytorch/test-infra/blob/main/.github/workflows/macos_job.yml
-
+  group: mps-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
+    }}
 jobs:
   mps-tests:
-    strategy:
-      matrix:
-        python-version: [3.11]
-        pytorch-channel: ["pytorch"]
-        skip-distrib-tests: [1]
-      fail-fast: false
-    runs-on: ["macos-m1-stable"]
-    timeout-minutes: 60
-    
+    runs-on:
+      - macos-m1-stable
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
+        run: 'echo "::group::Cleanup debug output"
+
           sudo rm -rfv "${GITHUB_WORKSPACE}"
+
           mkdir -p "${GITHUB_WORKSPACE}"
+
           echo "::endgroup::"
 
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
       - name: Checkout repository (pytorch/test-infra)
         uses: actions/checkout@v3
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
           path: test-infra
-
+          repository: pytorch/test-infra
       - name: Checkout repository (${{ github.repository }})
         uses: actions/checkout@v3
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
           fetch-depth: 1
-
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
       - name: Setup miniconda
         uses: ./test-infra/.github/actions/setup-miniconda
         with:
           python-version: ${{ matrix.python-version }}
+      - if: ${{ matrix.pytorch-channel == 'pytorch' }}
+        name: Install PyTorch
+        run: 'conda shell.bash hook
 
-      - name: Install PyTorch
-        if: ${{ matrix.pytorch-channel == 'pytorch' }}
-        shell: bash -l {0}
-        run: |
-          conda shell.bash hook
           conda activate $CONDA_ENV
+
           pip install torch torchvision
 
-      - name: Install PyTorch (nightly)
-        if: ${{ matrix.pytorch-channel == 'pytorch-nightly' }}
+          '
         shell: bash -l {0}
-        run: |
-          conda shell.bash hook
+      - id: measurement-7
+        name: Record Measurement After Install PyTorch
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install PyTorch
+          task: get-measurement
+      - if: ${{ matrix.pytorch-channel == 'pytorch-nightly' }}
+        name: Install PyTorch (nightly)
+        run: 'conda shell.bash hook
+
           conda activate $CONDA_ENV
+
           pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
 
-      - name: Install dependencies
+          '
         shell: bash -l {0}
-        working-directory: ${{ github.repository }}
-        run: |
-          conda activate $CONDA_ENV
-          # TODO: We add set -xe to explicitly fail the CI if one of the commands is failing.
+      - id: measurement-9
+        name: Record Measurement After Install PyTorch (nightly)
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install PyTorch (nightly)
+          task: get-measurement
+      - name: Install dependencies
+        run: 'conda activate $CONDA_ENV
+
+          # TODO: We add set -xe to explicitly fail the CI if one of the commands
+          is failing.
+
           # Somehow the step is passing even if a subcommand failed
+
           set -xe
+
           pip install -r requirements-dev.txt
+
           echo "1 returned code: $?"
+
           pip install -e .
+
           echo "2 returned code: $?"
+
           pip list
+
           echo "3 returned code: $?"
 
-      # Download MNIST: https://github.com/pytorch/ignite/issues/1737
-      # to "/tmp" for unit tests
+          '
+        shell: bash -l {0}
+        working-directory: ${{ github.repository }}
+      - id: measurement-11
+        name: Record Measurement After Install dependencies
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install dependencies
+          task: get-measurement
       - name: Download MNIST
         uses: pytorch-ignite/download-mnist-github-action@master
         with:
           target_dir: /tmp
-
-      # Copy MNIST to "." for the examples
       - name: Copy MNIST
-        run: |
-          cp -R /tmp/MNIST .
+        run: 'cp -R /tmp/MNIST .
 
+          '
+      - id: measurement-14
+        name: Record Measurement After Copy MNIST
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Copy MNIST
+          task: get-measurement
       - name: Run Tests
-        shell: bash -l {0}
-        working-directory: ${{ github.repository }}
-        run: |
-          conda activate $CONDA_ENV
+        run: 'conda activate $CONDA_ENV
+
           SKIP_DISTRIB_TESTS=${{ matrix.skip-distrib-tests }} bash tests/run_cpu_tests.sh
 
+          '
+        shell: bash -l {0}
+        working-directory: ${{ github.repository }}
+      - id: measurement-16
+        name: Record Measurement After Run Tests
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Run Tests
+          task: get-measurement
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
+          fail_ci_if_error: false
           file: ${{ github.repository }}/coverage.xml
           flags: mps
-          fail_ci_if_error: false
-
       - name: Run MNIST Examples
+        run: 'conda activate $CONDA_ENV
+
+          python examples/mnist/mnist.py --epochs=1
+
+          '
         shell: bash -l {0}
         working-directory: ${{ github.repository }}
-        run: |
-          conda activate $CONDA_ENV
-          python examples/mnist/mnist.py --epochs=1
+      - id: measurement-19
+        name: Record Measurement After Run MNIST Examples
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Run MNIST Examples
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - 3.11
+        pytorch-channel:
+          - pytorch
+        skip-distrib-tests:
+          - 1
+    timeout-minutes: 60

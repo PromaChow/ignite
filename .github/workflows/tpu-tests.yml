@@ -2,109 +2,141 @@ name: Run TPU tests
 on:
   push:
     branches:
-      - master
-      - "*.*.*"
-    paths:
-      - "ignite/**"
-      - "tests/ignite/**"
-      - "tests/run_tpu_tests.sh"
-      - "tests/run_code_style.sh"
-      - "requirements-dev.txt"
-      - ".github/workflows/tpu-tests.yml"
-  pull_request:
-    paths:
-      - "ignite/**"
-      - "tests/ignite/**"
-      - "tests/run_tpu_tests.sh"
-      - "tests/run_code_style.sh"
-      - "requirements-dev.txt"
-      - ".github/workflows/tpu-tests.yml"
-  workflow_dispatch:
+      - main
 
 concurrency:
-  # <workflow_name>-<branch_name>-<true || commit_sha (if branch is protected)>
-  group: tpu-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha }}
   cancel-in-progress: true
-
+  group: tpu-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
+    }}
 jobs:
   tpu-tests:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        xla-version: [nightly]
-
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-          architecture: "x64"
-
-      - name: Get year & week number
-        id: get-date
+          architecture: x64
+          python-version: '3.10'
+      - id: get-date
+        name: Get year & week number
         run: echo "date=$(/bin/date "+%Y-%U")" >> $GITHUB_OUTPUT
         shell: bash -l {0}
+      - id: measurement-4
+        name: Record Measurement After Get year & week number
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Get year & week number
+          task: get-measurement
+      - id: pip-cache
+        name: Get pip cache dir
+        run: 'pip3 install -U "pip<24"
 
-      - name: Get pip cache dir
-        id: pip-cache
-        run: |
-          pip3 install -U "pip<24"
           echo "pip_cache=$(pip cache dir)" >> $GITHUB_OUTPUT
-        shell: bash -l {0}
 
+          '
+        shell: bash -l {0}
+      - id: measurement-6
+        name: Record Measurement After Get pip cache dir
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Get pip cache dir
+          task: get-measurement
       - uses: actions/cache@v3
         with:
-          path: |
-            ${{ steps.pip-cache.outputs.pip_cache }}
-          key: ${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os }}-${{ matrix.xla-version }}-${{ hashFiles('requirements-dev.txt') }}
-          restore-keys: |
-            ${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os }}-${{ matrix.xla-version }}-
+          key: ${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os }}-${{ matrix.xla-version
+            }}-${{ hashFiles('requirements-dev.txt') }}
+          path: '${{ steps.pip-cache.outputs.pip_cache }}
 
+            '
+          restore-keys: '${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os
+            }}-${{ matrix.xla-version }}-
+
+            '
       - name: Install Torch XLA and others
-        run: |
+        run: '
 
           ## Install mkl (alternative approach to https://github.com/pytorch/xla/blob/b0ba29f98a695671972d4a4cc07441014dba2892/.kokoro/common.sh#L31-L32)
+
           sudo apt-get update && sudo apt-get install -y libopenblas-dev libomp5
+
           pip install mkl==2021.4.0
 
+
           ## Install torch & xla and torchvision
+
           pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
+
           pip install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp310-cp310-linux_x86_64.whl
-          
+
+
           # Check installation
+
           python -c "import torch"
 
+
           ## Install test deps and Ignite
+
           pip install -r requirements-dev.txt
+
           python setup.py install
 
-      # Download MNIST: https://github.com/pytorch/ignite/issues/1737
-      # to "/tmp" for tpu tests
+          '
+      - id: measurement-9
+        name: Record Measurement After Install Torch XLA and others
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install Torch XLA and others
+          task: get-measurement
       - name: Download MNIST
         uses: pytorch-ignite/download-mnist-github-action@master
         with:
           target_dir: /tmp
-
-      - name: Run Tests
+      - env:
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}:${{ env.Python_ROOT_DIR }}/lib
+          XRT_DEVICE_MAP: CPU:0;/job:localservice/replica:0/task:0/device:XLA_CPU:0
+          XRT_WORKERS: localservice:0;grpc://localhost:40934
+        name: Run Tests
         uses: nick-fields/retry@v3
         with:
-          max_attempts: 5
-          timeout_minutes: 25
-          shell: bash
-          command: |
-            python -c "import torch_xla; print('torch xla version:', torch_xla.__version__)"
-            bash tests/run_tpu_tests.sh
-          new_command_on_retry: USE_LAST_FAILED=1 bash tests/run_tpu_tests.sh
-        env:
-          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}:${{ env.Python_ROOT_DIR }}/lib
-          XRT_DEVICE_MAP: "CPU:0;/job:localservice/replica:0/task:0/device:XLA_CPU:0"
-          XRT_WORKERS: "localservice:0;grpc://localhost:40934"
+          command: 'python -c "import torch_xla; print(''torch xla version:'', torch_xla.__version__)"
 
+            bash tests/run_tpu_tests.sh
+
+            '
+          max_attempts: 5
+          new_command_on_retry: USE_LAST_FAILED=1 bash tests/run_tpu_tests.sh
+          shell: bash
+          timeout_minutes: 25
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
+          fail_ci_if_error: false
           file: ./coverage.xml
           flags: tpu
-          fail_ci_if_error: false
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223535.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223535.json
+    strategy:
+      fail-fast: false
+      matrix:
+        xla-version:
+          - nightly

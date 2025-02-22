@@ -1,93 +1,190 @@
 name: Build docs
-
 on:
   push:
     branches:
-      - master
-  pull_request:
-    paths-ignore:
-      - "tests/**"
-      - "docker/**"
-  release:
-    types: [published]
-  workflow_dispatch:
+      - main
 
 jobs:
   build-deploy:
+    if: (github.ref == 'refs/heads/master' && github.event_name == 'push') || github.event_name
+      == 'release'
     permissions:
       contents: write
-    if: (github.ref == 'refs/heads/master' && github.event_name == 'push') || github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-
+          python-version: '3.10'
       - run: sudo npm install katex -g
+      - id: measurement-4
+        name: Record Measurement After Step
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Step
+          task: get-measurement
       - uses: actions/cache@v3
         with:
+          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt')
+            }}
           path: ~/.cache/pip
-          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt') }}
-
       - name: Install docs deps
         run: bash .github/workflows/install_docs_deps.sh
-
+      - id: measurement-7
+        name: Record Measurement After Install docs deps
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install docs deps
+          task: get-measurement
       - name: Build docs
         run: bash .github/workflows/build_docs.sh
-
+      - id: measurement-9
+        name: Record Measurement After Build docs
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Build docs
+          task: get-measurement
       - name: Deploy docs
         uses: peaceiris/actions-gh-pages@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/build/html
-          publish_branch: gh-pages
           commit_message: Deploy pytorch/ignite docs
           force_orphan: true
-
-  linkcheck:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: docs/build/html
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
         with:
-          python-version: "3.10"
-
-      - uses: actions/cache@v3
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: ~/.cache/pip
-          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt') }}
-
-      - name: Install docs deps
-        run: bash .github/workflows/install_docs_deps.sh
-
-      - name: make linkcheck
-        working-directory: ./docs/
-        run: make linkcheck
-
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
   doctest:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-
+          python-version: '3.10'
       - run: sudo npm install katex -g
+      - id: measurement-4
+        name: Record Measurement After Step
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Step
+          task: get-measurement
       - uses: actions/cache@v3
         with:
+          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt')
+            }}
           path: ~/.cache/pip
-          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt') }}
-
       - name: Install docs deps
         run: bash .github/workflows/install_docs_deps.sh
-
+      - id: measurement-7
+        name: Record Measurement After Install docs deps
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install docs deps
+          task: get-measurement
       - name: make doctest
-        working-directory: ./docs/
-        run: |
-          make html
+        run: 'make html
+
           make doctest
+
           make coverage
+
+          '
+        working-directory: ./docs/
+      - id: measurement-9
+        name: Record Measurement After make doctest
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: make doctest
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+  linkcheck:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - uses: actions/cache@v3
+        with:
+          key: pip-${{ hashFiles('requirements-dev.txt') }}-${{ hashFiles('docs/requirements.txt')
+            }}
+          path: ~/.cache/pip
+      - name: Install docs deps
+        run: bash .github/workflows/install_docs_deps.sh
+      - id: measurement-5
+        name: Record Measurement After Install docs deps
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install docs deps
+          task: get-measurement
+      - name: make linkcheck
+        run: make linkcheck
+        working-directory: ./docs/
+      - id: measurement-7
+        name: Record Measurement After make linkcheck
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: make linkcheck
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+    timeout-minutes: 10

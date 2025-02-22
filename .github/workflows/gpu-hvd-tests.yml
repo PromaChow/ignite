@@ -1,198 +1,252 @@
 name: Run HVD-specific unit tests on GPUs
 on:
   push:
-    paths:
-      - "ignite/**"
-      - "tests/ignite/**"
-      - "tests/run_gpu_tests.sh"
-      - "tests/run_code_style.sh"
-      - "examples/**.py"
-      - "requirements-dev.txt"
-      - ".github/workflows/gpu-hvd-tests.yml"
-  workflow_dispatch:
+    branches:
+      - main
 
 concurrency:
-  # <workflow_name>-<branch_name>-<true || commit_sha (if branch is protected)>
-  group: gpu-hvd-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha }}
   cancel-in-progress: true
-
-# Cherry-picked from https://github.com/pytorch/test-infra/blob/main/.github/workflows/linux_job.yml
-
+  group: gpu-hvd-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
+    }}
 jobs:
   gpu-hvd-tests:
-    strategy:
-      matrix:
-        pytorch-channel: [pytorch]
-      fail-fast: false
     env:
-      DOCKER_IMAGE: "pytorch/conda-builder:cuda12.1"
-      REPOSITORY: ${{ github.repository }}
+      DOCKER_IMAGE: pytorch/conda-builder:cuda12.1
       PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
     runs-on: linux.8xlarge.nvidia.gpu
-    timeout-minutes: 60
-
     steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
       - name: Clean workspace
-        run: |
-          echo "::group::Cleanup debug output"
+        run: 'echo "::group::Cleanup debug output"
+
           sudo rm -rfv "${GITHUB_WORKSPACE}"
+
           mkdir -p "${GITHUB_WORKSPACE}"
+
           echo "::endgroup::"
 
+          '
+      - id: measurement-2
+        name: Record Measurement After Clean workspace
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Clean workspace
+          task: get-measurement
       - name: Checkout repository (pytorch/test-infra)
         uses: actions/checkout@v3
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: pytorch/test-infra
           path: test-infra
-
+          repository: pytorch/test-infra
       - name: Setup Linux
         uses: ./test-infra/.github/actions/setup-linux
-
       - name: Pull docker image
         uses: ./test-infra/.github/actions/pull-docker-image
         with:
           docker-image: ${{ env.DOCKER_IMAGE }}
-
       - name: Checkout repository (${{ github.repository }})
         uses: actions/checkout@v3
         with:
-          # Support the use case where we need to checkout someone's fork
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
-          path: ${{ github.repository }}
           fetch-depth: 1
-
+          path: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          repository: ${{ github.repository }}
       - name: Start Pytorch container
+        run: "docker run --name pthd --gpus=all --rm \\\n  --cap-add=SYS_PTRACE \\\
+          \n  --detach \\\n  --ipc=host \\\n  --security-opt seccomp=unconfined \\\
+          \n  --shm-size=2g \\\n  --tty \\\n  --ulimit stack=10485760:83886080 \\\n\
+          \  -v $PWD:/work \\\n  -w /work \\\n  ${DOCKER_IMAGE}\n\nscript=$(cat <<\
+          \ EOF\n\n  set -xe\n\n  nvidia-smi\n  ls -alh\n\n  conda --version\n  python\
+          \ --version\n\nEOF\n)\ndocker exec -t pthd /bin/bash -c \"${script}\"\n"
         working-directory: ${{ github.repository }}
-        run: |
-          docker run --name pthd --gpus=all --rm \
-            --cap-add=SYS_PTRACE \
-            --detach \
-            --ipc=host \
-            --security-opt seccomp=unconfined \
-            --shm-size=2g \
-            --tty \
-            --ulimit stack=10485760:83886080 \
-            -v $PWD:/work \
-            -w /work \
-            ${DOCKER_IMAGE}
-
-          script=$(cat << EOF
-
-            set -xe
-
-            nvidia-smi
-            ls -alh
-
-            conda --version
-            python --version
-
-          EOF
-          )
-          docker exec -t pthd /bin/bash -c "${script}"
-
-      - name: Install PyTorch and dependencies
-        continue-on-error: false
-        run: |
-
-          script=$(cat << EOF
-
-          set -xe
-
-          # Install PyTorch
-          if [ "${{ matrix.pytorch-channel }}" == "pytorch" ]; then
-            pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu121
-          else
-            pip install --upgrade --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu121
-          fi
-
-          python -c "import torch; print(torch.__version__, ', CUDA is available: ', torch.cuda.is_available()); exit(not torch.cuda.is_available())"
-          pip list
-
-          # Install dependencies
-          pip install -r requirements-dev.txt
-          pip install -e .
-
-          EOF
-          )
-
-          docker exec -t pthd /bin/bash -c "${script}"
-
+      - id: measurement-8
+        name: Record Measurement After Start Pytorch container
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Start Pytorch container
+          task: get-measurement
+      - continue-on-error: false
+        name: Install PyTorch and dependencies
+        run: "\nscript=$(cat << EOF\n\nset -xe\n\n# Install PyTorch\nif [ \"${{ matrix.pytorch-channel\
+          \ }}\" == \"pytorch\" ]; then\n  pip install --upgrade torch torchvision\
+          \ --index-url https://download.pytorch.org/whl/cu121\nelse\n  pip install\
+          \ --upgrade --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu121\n\
+          fi\n\npython -c \"import torch; print(torch.__version__, ', CUDA is available:\
+          \ ', torch.cuda.is_available()); exit(not torch.cuda.is_available())\"\n\
+          pip list\n\n# Install dependencies\npip install -r requirements-dev.txt\n\
+          pip install -e .\n\nEOF\n)\n\ndocker exec -t pthd /bin/bash -c \"${script}\"\
+          \n"
+      - id: measurement-10
+        name: Record Measurement After Install PyTorch and dependencies
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install PyTorch and dependencies
+          task: get-measurement
       - name: Install Horovod with NCCL GPU ops
-        run: |
-          script=$(cat << EOF
+        run: 'script=$(cat << EOF
+
 
           set -xe
 
-          # Can't build Horovod with recent pytorch due to pytorch required C++17 standard
+
+          # Can''t build Horovod with recent pytorch due to pytorch required C++17
+          standard
+
           # and horovod is still using C++14
+
           # HOROVOD_GPU_OPERATIONS=NCCL HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
+
           # Using a similar hack as described here:
+
           # https://github.com/horovod/horovod/issues/3941#issuecomment-1732505345
+
           git clone --recursive https://github.com/horovod/horovod.git /horovod
+
           cd /horovod
+
           sed -i "s/CMAKE_CXX_STANDARD 14/CMAKE_CXX_STANDARD 17/g" CMakeLists.txt
+
           sed -i "s/CMAKE_CXX_STANDARD 14/CMAKE_CXX_STANDARD 17/g" horovod/torch/CMakeLists.txt
+
           HOROVOD_GPU_OPERATIONS=NCCL HOROVOD_WITH_PYTORCH=1 python setup.py install
 
+
           horovodrun --check-build
+
           pip list
 
+
           EOF
+
           )
+
 
           docker exec -t pthd /bin/bash -c "${script}"
 
+          '
+      - id: measurement-12
+        name: Record Measurement After Install Horovod with NCCL GPU ops
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install Horovod with NCCL GPU ops
+          task: get-measurement
       - name: Run GPU and CPU Unit HVD Tests
-        run: |
+        run: '
 
           script=$(cat << EOF
 
+
           set -xe
 
+
           bash tests/run_gpu_tests.sh 2 hvd
-          CUDA_VISIBLE_DEVICES="" pytest --cov ignite --cov-append --cov-report term-missing --cov-report xml -vvv tests/ignite -m distributed -k hvd
+
+          CUDA_VISIBLE_DEVICES="" pytest --cov ignite --cov-append --cov-report term-missing
+          --cov-report xml -vvv tests/ignite -m distributed -k hvd
+
 
           EOF
+
           )
+
 
           docker exec -t pthd /bin/bash -c "${script}"
 
+          '
+      - id: measurement-14
+        name: Record Measurement After Run GPU and CPU Unit HVD Tests
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Run GPU and CPU Unit HVD Tests
+          task: get-measurement
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
+          fail_ci_if_error: false
           file: ${{ github.repository }}/coverage.xml
           flags: gpu-2
-          fail_ci_if_error: false
+      - continue-on-error: false
+        name: Run examples in container
+        run: 'SCRIPT=$(cat << EOF
 
-      - name: Run examples in container
-        continue-on-error: false
-        run: |
-          SCRIPT=$(cat << EOF
 
           set -xe
 
+
           # Install additional example dependencies
+
           pip install fire
 
+
           # Check training on CIFAR10, run with horovod backend using horovodrun
+
           # initial run
-          CI=1 horovodrun -np 2 python -u examples/cifar10/main.py run --backend=horovod --checkpoint_every=200 --stop_iteration=500
+
+          CI=1 horovodrun -np 2 python -u examples/cifar10/main.py run --backend=horovod
+          --checkpoint_every=200 --stop_iteration=500
+
           # resume
-          CI=1 horovodrun -np 2 python examples/cifar10/main.py run --checkpoint_every=200 --num_epochs=7 --resume-from=/tmp/output-cifar10/resnet18_backend-horovod-2_stop-on-500/training_checkpoint_400.pt
+
+          CI=1 horovodrun -np 2 python examples/cifar10/main.py run --checkpoint_every=200
+          --num_epochs=7 --resume-from=/tmp/output-cifar10/resnet18_backend-horovod-2_stop-on-500/training_checkpoint_400.pt
+
 
           # Check training on CIFAR10 using spawn
+
           # initial run
-          CI=1 python -u examples/cifar10/main.py run --backend=horovod --nproc_per_node=2 --checkpoint_every=200 --stop_iteration=500
+
+          CI=1 python -u examples/cifar10/main.py run --backend=horovod --nproc_per_node=2
+          --checkpoint_every=200 --stop_iteration=500
+
           # resume
-          CI=1 python -u examples/cifar10/main.py run --backend=horovod --nproc_per_node=2 --checkpoint_every=200 --num_epochs=7 --resume-from=/tmp/output-cifar10/resnet18_backend-horovod-2_stop-on-500/training_checkpoint_400.pt
+
+          CI=1 python -u examples/cifar10/main.py run --backend=horovod --nproc_per_node=2
+          --checkpoint_every=200 --num_epochs=7 --resume-from=/tmp/output-cifar10/resnet18_backend-horovod-2_stop-on-500/training_checkpoint_400.pt
+
 
           EOF
+
           )
+
 
           docker exec -t pthd /bin/bash -c "${script}"
 
-      - name: Teardown Linux
-        if: ${{ always() }}
+          '
+      - id: measurement-17
+        name: Record Measurement After Run examples in container
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Run examples in container
+          task: get-measurement
+      - if: ${{ always() }}
+        name: Teardown Linux
         uses: ./test-infra/.github/actions/teardown-linux
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${ steps.final-measurement.outputs.data-total-json }' > total_energy_consumption-1740223534.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption-1740223534.json
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-channel:
+          - pytorch
+    timeout-minutes: 60
