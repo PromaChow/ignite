@@ -2,12 +2,11 @@ name: Run HVD-specific unit tests on GPUs
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   cancel-in-progress: true
-  group: gpu-hvd-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
-    }}
+  group: gpu-hvd-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha}}
 jobs:
   gpu-hvd-tests:
     env:
@@ -57,7 +56,8 @@ jobs:
           ref: ${{ github.ref }}
           repository: ${{ github.repository }}
       - name: Start Pytorch container
-        run: "docker run --name pthd --gpus=all --rm \\\n  --cap-add=SYS_PTRACE \\\
+        run:
+          "docker run --name pthd --gpus=all --rm \\\n  --cap-add=SYS_PTRACE \\\
           \n  --detach \\\n  --ipc=host \\\n  --security-opt seccomp=unconfined \\\
           \n  --shm-size=2g \\\n  --tty \\\n  --ulimit stack=10485760:83886080 \\\n\
           \  -v $PWD:/work \\\n  -w /work \\\n  ${DOCKER_IMAGE}\n\nscript=$(cat <<\
@@ -71,17 +71,33 @@ jobs:
           json-output: true
           label: Start Pytorch container
           task: get-measurement
-      - continue-on-error: false
-        name: Install PyTorch and dependencies
-        run: "\nscript=$(cat << EOF\n\nset -xe\n\n# Install PyTorch\nif [ \"${{ matrix.pytorch-channel\
-          \ }}\" == \"pytorch\" ]; then\n  pip install --upgrade torch torchvision\
-          \ --index-url https://download.pytorch.org/whl/cu121\nelse\n  pip install\
-          \ --upgrade --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu121\n\
-          fi\n\npython -c \"import torch; print(torch.__version__, ', CUDA is available:\
-          \ ', torch.cuda.is_available()); exit(not torch.cuda.is_available())\"\n\
-          pip list\n\n# Install dependencies\npip install -r requirements-dev.txt\n\
-          pip install -e .\n\nEOF\n)\n\ndocker exec -t pthd /bin/bash -c \"${script}\"\
-          \n"
+
+      - name: Install PyTorch and dependencies
+        continue-on-error: false
+        run: |
+
+          script=$(cat << EOF
+
+          set -xe
+
+          # Install PyTorch
+          if [ "${{ matrix.pytorch-channel }}" == "pytorch" ]; then
+            pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu121
+          else
+            pip install --upgrade --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu121
+          fi
+
+          python -c "import torch; print(torch.__version__, ', CUDA is available: ', torch.cuda.is_available()); exit(not torch.cuda.is_available())"
+          pip list
+
+          # Install dependencies
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+          EOF
+          )
+
+          docker exec -t pthd /bin/bash -c "${script}"
       - id: measurement-10
         name: Record Measurement After Install PyTorch and dependencies
         uses: green-coding-solutions/eco-ci-energy-estimation@v4

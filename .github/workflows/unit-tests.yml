@@ -2,12 +2,11 @@ name: Run unit tests
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   cancel-in-progress: true
-  group: unit-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
-    }}
+  group: unit-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha}}
 jobs:
   cpu-tests:
     defaults:
@@ -52,16 +51,18 @@ jobs:
           task: get-measurement
       - uses: actions/cache@v3
         with:
-          key: ${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os }}-${{ matrix.python-version
+          key:
+            ${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os }}-${{ matrix.python-version
             }}-${{ matrix.pytorch-channel }}-${{ hashFiles('requirements-dev.txt')
             }}
-          path: '${{ steps.pip-cache.outputs.pip_cache }}
+          path: "${{ steps.pip-cache.outputs.pip_cache }}
 
-            '
-          restore-keys: '${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os
+            "
+          restore-keys:
+            "${{ steps.get-date.outputs.date }}-pytorch-${{ runner.os
             }}-${{ matrix.python-version }}-${{ matrix.pytorch-channel }}-
 
-            '
+            "
       - run: pip install pip wheel setuptools -Uqq
       - id: measurement-9
         name: Record Measurement After Step
@@ -82,7 +83,8 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.pytorch-channel == 'pytorch-nightly' }}
         name: Install PyTorch (nightly)
-        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
+        run:
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
           --pre
       - id: measurement-13
         name: Record Measurement After Install PyTorch (nightly)
@@ -92,13 +94,13 @@ jobs:
           label: Install PyTorch (nightly)
           task: get-measurement
       - name: Install dependencies
-        run: 'pip install -r requirements-dev.txt
+        run: "pip install -r requirements-dev.txt
 
           python setup.py install
 
           pip list
 
-          '
+          "
       - id: measurement-15
         name: Record Measurement After Install dependencies
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -107,11 +109,11 @@ jobs:
           label: Install dependencies
           task: get-measurement
       - name: Check code formatting
-        run: 'bash ./tests/run_code_style.sh install
+        run: "bash ./tests/run_code_style.sh install
 
           bash ./tests/run_code_style.sh lint
 
-          '
+          "
       - id: measurement-17
         name: Record Measurement After Check code formatting
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -121,9 +123,9 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.pytorch-channel == 'pytorch-nightly'}}
         name: Run Mypy
-        run: 'bash ./tests/run_code_style.sh mypy
+        run: "bash ./tests/run_code_style.sh mypy
 
-          '
+          "
       - id: measurement-19
         name: Record Measurement After Run Mypy
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -136,9 +138,9 @@ jobs:
         with:
           target_dir: /tmp
       - name: Copy MNIST
-        run: 'cp -R /tmp/MNIST .
+        run: "cp -R /tmp/MNIST .
 
-          '
+          "
       - id: measurement-22
         name: Record Measurement After Copy MNIST
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -151,7 +153,8 @@ jobs:
         with:
           command: SKIP_DISTRIB_TESTS=${{ matrix.skip-distrib-tests }} bash tests/run_cpu_tests.sh
           max_attempts: 5
-          new_command_on_retry: USE_LAST_FAILED=1 SKIP_DISTRIB_TESTS=${{ matrix.skip-distrib-tests
+          new_command_on_retry:
+            USE_LAST_FAILED=1 SKIP_DISTRIB_TESTS=${{ matrix.skip-distrib-tests
             }} bash tests/run_cpu_tests.sh
           shell: bash
           timeout_minutes: 15
@@ -162,13 +165,13 @@ jobs:
           file: ./coverage.xml
           flags: cpu
       - name: Run MNIST Examples
-        run: '# MNIST
+        run: "# MNIST
 
           # 1) mnist.py
 
           python examples/mnist/mnist.py --epochs=1
 
-          '
+          "
       - id: measurement-26
         name: Record Measurement After Run MNIST Examples
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -212,12 +215,12 @@ jobs:
       - continue-on-error: true
         if: ${{ matrix.os == 'ubuntu-latest' }}
         name: Run MNIST Example With Crash
-        run: '# 4) mnist_save_resume_engine.py
+        run: "# 4) mnist_save_resume_engine.py
 
           python examples/mnist/mnist_save_resume_engine.py --epochs=2 --crash_iteration
           1100
 
-          '
+          "
       - id: measurement-30
         name: Record Measurement After Run MNIST Example With Crash
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -227,9 +230,10 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.os == 'ubuntu-latest' }}
         name: Resume MNIST from previous crash
-        run: 'python examples/mnist/mnist_save_resume_engine.py --epochs=2 --resume_from=/tmp/mnist_save_resume/checkpoint_1.pt
+        run:
+          "python examples/mnist/mnist_save_resume_engine.py --epochs=2 --resume_from=/tmp/mnist_save_resume/checkpoint_1.pt
 
-          '
+          "
       - id: measurement-32
         name: Record Measurement After Resume MNIST from previous crash
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -239,12 +243,12 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.os == 'ubuntu-latest' }}
         name: Run GAN example
-        run: '# DCGAN
+        run: "# DCGAN
 
           python examples/gan/dcgan.py --dataset fake --dataroot /tmp/fakedata --output-dir
           /tmp/outputs-dcgan --batch-size 2 --epochs 2  --workers 0
 
-          '
+          "
       - id: measurement-34
         name: Record Measurement After Run GAN example
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -254,7 +258,7 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.os == 'ubuntu-latest' }}
         name: Run RL Examples
-        run: '# RL
+        run: "# RL
 
           # 1) Actor-Critic
 
@@ -264,7 +268,7 @@ jobs:
 
           python examples/reinforcement_learning/reinforce.py --max-episodes=2
 
-          '
+          "
       - id: measurement-36
         name: Record Measurement After Run RL Examples
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -295,13 +299,13 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.os == 'ubuntu-latest' }}
         name: Run SR Example
-        run: '# Super-Resolution
+        run: "# Super-Resolution
 
           python examples/super_resolution/main.py --upscale_factor 3 --crop_size
           180 --batch_size 4 --test_batch_size 100 --n_epochs 1 --lr 0.001 --threads
           2 --debug
 
-          '
+          "
       - id: measurement-40
         name: Record Measurement After Run SR Example
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -337,10 +341,10 @@ jobs:
         os:
           - ubuntu-latest
         python-version:
-          - '3.9'
-          - '3.10'
-          - '3.11'
-          - '3.12'
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
         pytorch-channel:
           - pytorch
           - pytorch-nightly

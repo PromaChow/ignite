@@ -2,7 +2,7 @@ name: Nightly Releases
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build-publish:
@@ -18,9 +18,10 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           miniconda-version: latest
-          python-version: '3.10'
+          python-version: "3.10"
       - name: Setup nightly version
-        run: 'sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1.dev$(date -u +%Y%m%d)\"/g"
+        run:
+          'sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1.dev$(date -u +%Y%m%d)\"/g"
           ignite/__init__.py
 
           cat ignite/__init__.py
@@ -34,11 +35,11 @@ jobs:
           label: Setup nightly version
           task: get-measurement
       - name: Install dependencies
-        run: 'conda install -y pytorch torchvision cpuonly -c pytorch-nightly
+        run: "conda install -y pytorch torchvision cpuonly -c pytorch-nightly
 
           pip install -r requirements-dev.txt
 
-          '
+          "
         shell: bash -l {0}
       - id: measurement-6
         name: Record Measurement After Install dependencies
@@ -51,11 +52,11 @@ jobs:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
           UPLOAD_USER: pytorch-nightly
         name: Build and Publish Conda binaries
-        run: 'chmod +x ./conda.recipe/build_and_upload.sh
+        run: "chmod +x ./conda.recipe/build_and_upload.sh
 
           ./conda.recipe/build_and_upload.sh
 
-          '
+          "
         shell: bash -l {0}
       - id: measurement-8
         name: Record Measurement After Build and Publish Conda binaries

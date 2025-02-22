@@ -2,11 +2,12 @@ name: Run unit tests on M1
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   cancel-in-progress: true
-  group: mps-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
+  group:
+    mps-tests-${{ github.ref_name }}-${{ !(github.ref_protected) || github.sha
     }}
 jobs:
   mps-tests:
@@ -53,13 +54,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - if: ${{ matrix.pytorch-channel == 'pytorch' }}
         name: Install PyTorch
-        run: 'conda shell.bash hook
+        run: "conda shell.bash hook
 
           conda activate $CONDA_ENV
 
           pip install torch torchvision
 
-          '
+          "
         shell: bash -l {0}
       - id: measurement-7
         name: Record Measurement After Install PyTorch
@@ -70,13 +71,13 @@ jobs:
           task: get-measurement
       - if: ${{ matrix.pytorch-channel == 'pytorch-nightly' }}
         name: Install PyTorch (nightly)
-        run: 'conda shell.bash hook
+        run: "conda shell.bash hook
 
           conda activate $CONDA_ENV
 
           pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
 
-          '
+          "
         shell: bash -l {0}
       - id: measurement-9
         name: Record Measurement After Install PyTorch (nightly)
@@ -122,9 +123,9 @@ jobs:
         with:
           target_dir: /tmp
       - name: Copy MNIST
-        run: 'cp -R /tmp/MNIST .
+        run: "cp -R /tmp/MNIST .
 
-          '
+          "
       - id: measurement-14
         name: Record Measurement After Copy MNIST
         uses: green-coding-solutions/eco-ci-energy-estimation@v4
@@ -133,11 +134,11 @@ jobs:
           label: Copy MNIST
           task: get-measurement
       - name: Run Tests
-        run: 'conda activate $CONDA_ENV
+        run: "conda activate $CONDA_ENV
 
           SKIP_DISTRIB_TESTS=${{ matrix.skip-distrib-tests }} bash tests/run_cpu_tests.sh
 
-          '
+          "
         shell: bash -l {0}
         working-directory: ${{ github.repository }}
       - id: measurement-16
@@ -154,11 +155,11 @@ jobs:
           file: ${{ github.repository }}/coverage.xml
           flags: mps
       - name: Run MNIST Examples
-        run: 'conda activate $CONDA_ENV
+        run: "conda activate $CONDA_ENV
 
           python examples/mnist/mnist.py --epochs=1
 
-          '
+          "
         shell: bash -l {0}
         working-directory: ${{ github.repository }}
       - id: measurement-19

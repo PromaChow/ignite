@@ -2,7 +2,7 @@ name: Run Horovod tests
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   cancel-in-progress: true
